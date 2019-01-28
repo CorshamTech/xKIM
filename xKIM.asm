@@ -25,18 +25,23 @@
 ; in the comments somewhere.  Even better, consider
 ; buying a board from us: www.corshamtech.com
 ;
-; 12/01/2015 - Bob Applegate
-;              Initial development - V0.X
-; 03/15/2016 - Bob Applegate
-;              v1.0 - First official release
-; 01/03/2017 - Bob Applegate
-;              v1.1 - Added S command
+; 12/01/2015	Bob Applegate
+;		Initial development - V0.X
+; 03/15/2016	Bob Applegate
+;		v1.0 - First official release
+; 01/03/2017	Bob Applegate
+;		v1.1 - Added S command
+; 09/20/2018	Bob Applegate
+;		v1.2 - Added auto-run vector
+; 01/25/2019	Bob Applegate
+;		v1.3 - Added 'X' command.
+;		Added inclusion of my Tiny BASIC.
 ;
 ;*****************************************************
 ; Version number
 ;
 VERSION		equ	1
-REVISION	equ	1
+REVISION	equ	3
 ;
 ; Useful constants
 ;
@@ -63,6 +68,12 @@ RAM_START	equ	$df80
 ; true to only reset the SD system on cold starts.
 ;
 SD_ONLY_COLD	equ	false
+;
+; Set this to true to include Bob's Tiny BASIC.  It's
+; a minimal (ie, tiny) BASIC interpreter good for
+; playing around.
+;
+TINY_BASIC	equ	true
 ;
 ; ASCII
 ;
@@ -205,10 +216,17 @@ Temp16H		ds	1
 ; sure to adjust the ORG.
 ;
 	if	RAM_BASED
-		org	RAM_CODE_BASE-6
+		org	RAM_CODE_BASE-8
 	else
-		org	ROM_START-6
+		org	ROM_START-8
 	endif
+;
+; Before loading a hex file, the MSB of this vector
+; is set to FF.  After loading the file, if the MSB
+; is no longer FF then the address in this vector is
+; jumped to.  Ie, it can auto-run a file.
+;
+AutoRun		ds	2
 ;
 ; ColdFlag is used to determine if the extended
 ; monitoring is doing a warm or cold start.
@@ -423,6 +441,12 @@ commandTable	db	'?'
 		dw	showHelp
 		dw	quesDesc
 ;
+	if	TINY_BASIC
+		db	'B'
+		dw	TBasicCold
+		dw	bDesc
+	endif
+;
 		db	'D'
 		dw	doDiskDir
 		dw	dDesc
@@ -463,6 +487,10 @@ commandTable	db	'?'
 		dw	typeFile
 		dw	tDesc
 ;
+		db	'X'	;return to KIM monitor
+		dw	returnKim
+		dw	kDesc
+;
 		db	'!'	;do cold restart
 		dw	doCold
 		dw	bangDesc
@@ -476,6 +504,7 @@ commandTable	db	'?'
 ; the amount of space this table consumes.
 ;
 quesDesc	db	"? ........... Show this help",0
+bDesc		db	"B ........... Bob's Tiny BASIC",0
 dDesc		db	"D ........... Disk directory",0
 eDesc		db	"E xxxx ...... Edit memory",0
 hDesc		db	"H xxxx xxxx . Hex dump memory",0
@@ -851,7 +880,10 @@ editMem2	cmp	#CR
 ;=====================================================
 ; This handles the Load hex command.
 ;
-loadHex		jsr	putsil
+loadHex		lda	#$ff
+		sta	AutoRun+1
+;
+		jsr	putsil
 		db	CR,LF
 		db	"Enter filename, or Enter to "
 		db	"load from console: ",0
@@ -944,6 +976,15 @@ loadEof		jsr	getHex	;get checksum
 		db	CR,LF
 		db	"Success!"
 		db	CR,LF,0
+;
+; If the auto-run vector is no longer $ffff, then jump
+; to whatever it points to.
+;
+		lda	AutoRun+1
+		cmp	#$ff		;unchanged?
+		beq	lExit1
+		jmp	(AutoRun)	;execute!
+;
 lExit1		jmp	loadExit
 ;
 ; Data records have more work.  After processing the
@@ -1623,6 +1664,10 @@ closeonly	jmp	DiskClose
 		include	"pario.asm"
 		include	"parproto.inc"
 		include	"diskfunc.asm"
+;
+	if	TINY_BASIC
+		include "mytb.asm"
+	endif
 		page
 ;
 ;=====================================================
