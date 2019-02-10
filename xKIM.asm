@@ -35,7 +35,7 @@
 ;		v1.2 - Added auto-run vector
 ; 01/25/2019	Bob Applegate
 ;		v1.3 - Added 'X' command.
-;		Added inclusion of my Tiny BASIC.
+;		Added the 'C' command to get time.
 ;
 ;*****************************************************
 ; Version number
@@ -73,7 +73,12 @@ SD_ONLY_COLD	equ	false
 ; a minimal (ie, tiny) BASIC interpreter good for
 ; playing around.
 ;
-TINY_BASIC	equ	true
+TINY_BASIC	equ	false
+;
+; Set this to true to include a command to get/display
+; the current time from Corsham Tech SD card.
+;
+SHOW_RTC	equ	true
 ;
 ; ASCII
 ;
@@ -154,7 +159,7 @@ ID  		ds	1
 ;=====================================================
 ; KIM I/O locations
 ;
-SAD		    equ	$1740
+SAD		equ	$1740
 PADD		equ	$1741
 ;
 ;=====================================================
@@ -208,6 +213,19 @@ diskBufLength	ds	1
 ;
 Temp16L		ds	1
 Temp16H		ds	1
+;
+; The clock functions need some storage, but just
+; overlay the names onto the buffer.
+;
+month		equ	buffer
+day		equ	month+1
+year_high	equ	day+1
+year_low	equ	year_high+1
+hour		equ	year_low+1
+minute		equ	hour+1
+second		equ	minute+1
+day_of_week	equ	second+1
+clock_end	equ	day_of_week+1
 ;
 ; The next group of memory are public and can be
 ; used by user programs, so don't modify where any
@@ -447,6 +465,11 @@ commandTable	db	'?'
 		dw	bDesc
 	endif
 ;
+	if	SHOW_RTC
+		db	'C'
+		dw	doShowClock
+		dw	cDesc
+	endif
 		db	'D'
 		dw	doDiskDir
 		dw	dDesc
@@ -505,6 +528,7 @@ commandTable	db	'?'
 ;
 quesDesc	db	"? ........... Show this help",0
 bDesc		db	"B ........... Bob's Tiny BASIC",0
+cDesc		db	"C ........... Show clock",0
 dDesc		db	"D ........... Disk directory",0
 eDesc		db	"E xxxx ...... Edit memory",0
 hDesc		db	"H xxxx xxxx . Hex dump memory",0
@@ -1664,6 +1688,99 @@ closeonly	jmp	DiskClose
 		include	"pario.asm"
 		include	"parproto.inc"
 		include	"diskfunc.asm"
+;
+;=====================================================
+; Show current clock
+;
+	if	SHOW_RTC
+doShowClock	jsr	xParSetWrite
+		lda	#PC_GET_CLOCK
+		jsr	xParWriteByte
+		jsr	xParSetRead	;prepare to read
+;
+		jsr	xParReadByte
+;
+; Loop to read the raw data
+;
+		ldx	#0
+clockread	stx	saveX
+		jsr	xParReadByte
+		ldx	saveX
+		sta	month,x
+		inx
+		cpx	#clock_end-month
+		bne	clockread
+;
+; Set back to write mode to finish up; all apps are
+; supposed to leave the SD interface in write mode.
+;
+		jsr	xParSetWrite
+;
+; Now display the data in a user-friendly format.  Each
+; numberic value is in binary, so convert to decimal
+; for display.
+;
+		jsr	putsil
+		db	CR,LF
+		db	"Date: ",0
+;
+		lda	month
+		jsr	outdec
+		lda	#'/'
+		jsr	OUTCH
+		lda	day
+		jsr	outdec
+;
+; Always force the high part of the year to "/20"
+;
+		jsr	putsil
+		db	"/20",0
+		lda	year_low
+		jsr	outdec
+;
+; Space over, then do the time
+;
+		jsr	putsil
+		db	", ",0
+;
+		lda	hour
+		jsr	outdec
+		lda	#':'
+		jsr	OUTCH
+		lda	minute
+		jsr	outdec
+		lda	#':'
+		jsr	OUTCH
+		lda	second
+		jsr	outdec
+;
+		jsr	putsil
+		db	CR,LF,0
+		jmp	extKim	;return to monitor
+;
+;========================================================
+; Given a binary value in A, display it as two digits.
+; The input can't be greater than 99.  Always print
+; a leader zero if less than 10.
+;
+outdec		ldy	#0	;counts 10s
+out1		cmp	#10
+		bcc	out2	;below 10
+		iny		;count 10
+		sec
+		sbc	#10
+		jmp	out1
+;
+out2		pha		;save ones
+		tya		;get tens
+		jsr	out3	;print tens digit
+		pla		;restore ones
+;
+out3		ora	#'0'
+		jsr	OUTCH
+		rts
+
+	endif
 ;
 	if	TINY_BASIC
 		include "mytb.asm"

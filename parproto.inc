@@ -10,7 +10,7 @@
 ; This was updated 06/13/2015 to be compliant with the
 ; official specification, so the opcode values changed.
 ;
-; Another update on 09/04/2017
+; Another update on 02/10/2019
 ;
 ;=====================================================
 ; Commands from host to Arduino
@@ -18,6 +18,8 @@
 PC_GET_VERSION	equ	$01
 PC_PING		equ	$05	;ping Arduino
 PC_LED_CONTROL	equ	$06	;LED control
+PC_GET_CLOCK	equ	$07	;get clock data
+PC_SET_CLOCK	equ	$08	;set clock
 PC_GET_DIR	equ	$10	;Get directory
 PC_GET_MOUNTED	equ	$11	;Get mounted drive list
 PC_MOUNT	equ	$12	;Mount drive
@@ -34,8 +36,8 @@ PC_WRITE_FILE   equ	$1b	;Open file for writing
 PC_WRITE_BYTES	equ	$1c	;Data to be written
 PC_SAVE_CONFIG	equ	$1d	;Save SD.CFG with current values
 PC_SET_TIMER	equ	$1e	;Set RTC timer
-PC_WR_SEC_LONG	equ	$1f	;Write sector with long sec num
-PC_RD_SEC_LONG	equ	$20	;Read sector with long sec num
+PC_RD_SEC_LONG	equ	$1f	;Read sector with long sec num
+PC_WR_SEC_LONG	equ	$20	;Write sector with long sec num
 ;
 ;=====================================================
 ; Responses from Arduino to host
@@ -44,6 +46,7 @@ PR_VERSION_INFO	equ	$81	;Contains version information
 PR_ACK		equ	$82	;ACK (no additional information)
 PR_NAK		equ	$83	;NAK - one status byte follows
 PR_PONG		equ	$85	;Reply to a ping
+PR_CLOCK_DATA	equ	$87	;Clock data
 PR_DIR_ENTRY	equ	$90	;Directory entry
 PR_DIR_END	equ	$91	;End of directory entries
 PR_FILE_DATA	equ	$92	;File data
