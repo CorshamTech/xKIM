@@ -36,6 +36,8 @@
 ; 01/25/2019	Bob Applegate
 ;		v1.3 - Added 'X' command.
 ;		Added the 'C' command to get time.
+; 03/09/2019	Bob Applegate
+;		v1.4 - Added 'O' command.
 ;
 ;*****************************************************
 ; Version number
@@ -498,6 +500,10 @@ commandTable	db	'?'
 		dw	memTest
 		dw	mDesc
 ;
+		db	'O'	;branch offset calculator
+		dw	offCalc
+		dw	oDesc
+;
 		db	'P'	;ping remote disk
 		dw	pingDisk
 		dw	pDesc
@@ -536,6 +542,7 @@ jDesc		db	"J xxxx ...... Jump to address",0
 kDesc		db	"K ........... Go to KIM monitor",0
 lDesc		db	"L ........... Load HEX file",0
 mDesc		db	"M xxxx xxxx . Memory test",0
+oDesc		db	"O xxxx xxxx . Calculate branch offset",0
 pDesc		db	"P ........... Ping disk controller",0
 sDesc		db	"S xxxx xxxx . Save memory to file",0
 tDesc		db	"T ........... Type disk file",0
@@ -1297,6 +1304,75 @@ typeFileLoop	jsr	getNextFileByte
 		jmp	typeFileLoop
 ;
 typeEof		jsr	DiskClose
+		jmp	extKimLoop
+;
+;=====================================================
+; Calculate the offset for a relative branch
+;
+offCalc		jsr	putsil
+		db	" - Branch instruction address: "
+		db	0
+		jsr	getStartAddr
+		bcs	calcExit
+		jsr	putsil
+		db	", branch to: "
+		db	0
+		jsr	getEndAddr
+		bcs	calcExit
+;
+; Add two to the start address since the offset is
+; relative to the address AFTER the offset.  Ie, the
+; offset from a branch at 0200 to 0202 would be 00,
+; while the offset for a branch at 0202 to 0200 is FE.
+;
+		clc
+		lda	SAL
+		adc	#2
+		sta	SAL
+		lda	SAH
+		adc	#0
+		sta	SAH
+;
+; Subtract the source address from the destination.
+;
+		sec
+		lda	EAL
+		sbc	SAL
+		sta	SAL
+		lda	EAH
+		sbc	SAH
+;
+; High part must be either FF for negative branch or
+; 00 for a positive branch.
+;
+		cmp	#0
+		bne	calcNeg
+;
+; Positive.  The lower byte must be positive
+;
+		lda	SAL
+		bpl	calDisp	;good... display it
+;
+; Out of range
+;
+calOORange	jsr	putsil
+		db	CR,LF
+		db	"Branch out of range"
+		db	CR,LF,0
+calcExit	jmp	extKimLoop
+;
+; Negative.  LSB must be negative too.
+;
+calcNeg		lda	SAL
+		bpl	calOORange
+;
+; Good offset; display it
+;
+calDisp		pha
+		jsr	putsil
+		db	", offset ",0
+		pla
+		jsr	PRTBYT
 		jmp	extKimLoop
 ;
 ; Add new commands here...
