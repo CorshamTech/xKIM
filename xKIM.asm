@@ -43,7 +43,7 @@
 ; Version number
 ;
 VERSION		equ	1
-REVISION	equ	3
+REVISION	equ	4
 ;
 ; Useful constants
 ;
@@ -1003,6 +1003,7 @@ loadExit	jsr	setInputConsole
 ; EOF is easy
 ;
 loadEof		jsr	getHex	;get checksum
+		jsr	setInputConsole	;reset input vector
 		jsr	putsil
 		db	CR,LF
 		db	"Success!"
