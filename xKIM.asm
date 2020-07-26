@@ -38,12 +38,18 @@
 ;		Added the 'C' command to get time.
 ; 03/09/2019	Bob Applegate
 ;		v1.4 - Added 'O' command.
+; 07/26/2020	Bob Applegate
+;		v1.5 - Fixed bug that caused the S
+;		command to create empty file with no
+;		contents.
+;		Minor typo fixes.
+;		Added CLD instructions.
 ;
 ;*****************************************************
 ; Version number
 ;
 VERSION		equ	1
-REVISION	equ	4
+REVISION	equ	5
 ;
 ; Useful constants
 ;
@@ -412,7 +418,8 @@ coldStart	lda	#COLD_FLAG_1	;indicate we've done cold
 ; Main command loop.  Put out prompt, get command, etc.
 ; Prints a slightly different prompt for the RAM version.
 ;
-extKimLoop	jsr	setInputConsole
+extKimLoop	cld
+		jsr	setInputConsole
 		jsr	putsil	;output prompt
 		db	CR,LF	;feel free to change it
 	if	RAM_BASED
@@ -1064,7 +1071,7 @@ saveHex		jsr	getAddrRange	;get range to dump
 		jsr	putsil
 		db	CR,LF
 		db	"Enter filename, or Enter to "
-		db	"load from console: ",0
+		db	"display to console: ",0
 ;
 		jsr	getFileName	;get filename
 		lda	filename	;null?
@@ -1096,7 +1103,7 @@ savehex2	sec
 		sbc	SAH
 		sta	Temp16H
 		bcc	SDone	;start > end
-		ora	0
+		ora	#0
 		bmi	SDone	;more than 32K seems wrong
 ;
 ; Add one to the count
