@@ -44,12 +44,14 @@
 ;		contents.
 ;		Minor typo fixes.
 ;		Added CLD instructions.
+; 11/14/2020	Bob Applegate
+;		On SD error, display reason code.
 ;
 ;*****************************************************
 ; Version number
 ;
 VERSION		equ	1
-REVISION	equ	5
+REVISION	equ	6
 ;
 ; Useful constants
 ;
@@ -221,6 +223,7 @@ diskBufLength	ds	1
 ;
 Temp16L		ds	1
 Temp16H		ds	1
+byteCount	equ	saveX
 ;
 ; The clock functions need some storage, but just
 ; overlay the names onto the buffer.
@@ -966,7 +969,7 @@ loadStart	jsr	redirectedGetch	;get start of line
 		cmp	#LF
 		beq	loadStart
 		cmp	#':'	;what we expect
-		bne	loadAbort
+		bne	loadAbortB
 ;
 ; Get the header of the record
 ;
@@ -974,19 +977,19 @@ loadStart	jsr	redirectedGetch	;get start of line
 		sta	CHKL	;initialize checksum
 ;
 		jsr	getHex	;get byte count
-		bcs	loadAbort
-		sta	saveX	;save byte count
+		bcs	loadAbortC
+		sta	byteCount	;save byte count
 		jsr	updateCrc
 		jsr	getHex	;get the MSB of offset
-		bcs	loadAbort
+		bcs	loadAbortD
 		sta	POINTH
 		jsr	updateCrc
 		jsr	getHex	;get LSB of offset
-		bcs	loadAbort
+		bcs	loadAbortE
 		sta	POINTL
 		jsr	updateCrc
 		jsr	getHex	;get the record type
-		bcs	loadAbort
+		bcs	loadAbortF
 		jsr	updateCrc
 ;
 ; Only handle two record types:
@@ -1000,12 +1003,49 @@ loadStart	jsr	redirectedGetch	;get start of line
 ;
 ; Unknown record type
 ;
-loadAbort       jsr	putsil
+		lda	#'A'		;reason
+;
+; This is the common error handler for various reasons.
+; On entry A contains an ASCII character which is output
+; to indicate the specific error reason.
+;
+loadAbort       pha			;save reason
+		jsr	putsil
 		db	CR,LF
-		db	"Aborting"
-		db	CR,LF,0
+		db	"Aborting, reason: "
+		db	0
+		pla			;restore and...
+		jsr	OUTCH		;...display reason
+		jsr	CRLF
 loadExit	jsr	setInputConsole
 		jmp	extKimLoop
+;
+; Various error reason codes.  This was meant to be
+; very temporary as I worked out the real problem, but
+; this debug code immediately "solved" the problem so
+; I just left these as-is until the root cause is
+; discovered.
+;
+loadAbortB	lda	#'B'
+		bne	loadAbort
+;
+loadAbortC	lda	#'C'
+		bne	loadAbort
+;
+loadAbortD	lda	#'D'
+		bne	loadAbort
+;
+loadAbortE	lda	#'E'
+		bne	loadAbort
+;
+loadAbortF	lda	#'F'
+		bne	loadAbort
+;
+loadAbortG	lda	#'G'
+		bne	loadAbort
+;
+loadAbortH	lda	#'H'
+		bne	loadAbort
 ;
 ; EOF is easy
 ;
@@ -1024,22 +1064,22 @@ loadEof		jsr	getHex	;get checksum
 		beq	lExit1
 		jmp	(AutoRun)	;execute!
 ;
-lExit1		jmp	loadExit
+lExit1		jmp	extKimLoop
 ;
 ; Data records have more work.  After processing the
 ; line, print a dot to indicate progress.  This should
 ; be re-thought as it could slow down loading a really
 ; big file if the console speed is slow.
 ;
-loadDataRec	ldx	saveX	;byte count
+loadDataRec	ldx	byteCount	;byte count
 		ldy	#0	;offset
-loadData1	stx	saveX
+loadData1	stx	byteCount
 		sty	saveY
 		jsr	getHex
-		bcs	loadAbort
+		bcs	loadAbortG
 		jsr	updateCrc
 		ldy	saveY
-		ldx	saveX
+		ldx	byteCount
 		sta	(POINTL),y
 		iny
 		dex
@@ -1053,7 +1093,7 @@ loadData1	stx	saveX
 		jsr	getHex	;get checksum
 		clc
 		adc	CHKL
-		bne	loadAbort	;non-zero is error
+		bne	loadAbortH	;non-zero is error
 ;
 		lda	#'.'	;sanity indicator when
 		jsr	OUTCH	;...loading from file
