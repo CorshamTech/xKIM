@@ -45,13 +45,16 @@
 ;		Minor typo fixes.
 ;		Added CLD instructions.
 ; 11/14/2020	Bob Applegate
-;		On SD error, display reason code.
+;		v1.6 - On SD error, display reason code.
+; 09/15/2021	Bob Applegate
+;		v1.7
+;		Added offset calculator
 ;
 ;*****************************************************
 ; Version number
 ;
 VERSION		equ	1
-REVISION	equ	6
+REVISION	equ	7
 ;
 ; Useful constants
 ;
@@ -1355,7 +1358,21 @@ typeEof		jsr	DiskClose
 		jmp	extKimLoop
 ;
 ;=====================================================
-; Calculate the offset for a relative branch
+; Calculate the offset for a relative branch.  6502
+; relative branch calculations are well known.
+;
+; Offset from branch (BASE) = TARGET - (BASE+2).
+; If the result is positive, upper byte must be
+; zero.  If negative, upper byte must be FF.
+;
+; BASE	TARGET	Computed	Actual
+; 0200	0200	0200-(0200+2)	FFFE
+; 0200	020E	020E-(0200+2)	000C
+; 0226	0220	0220-(0226+2)	FFF8
+; 0156	015A	015A-(0156+2)	0002
+; 015C	012D	012D-(015C+2)	FFCF
+; 0200	0300	0300-(0200+2)	00FE - out of range
+; 0300	0200	0200-(0300+2)	FEFE - out of range
 ;
 offCalc		jsr	putsil
 		db	" - Branch instruction address: "
@@ -1368,59 +1385,54 @@ offCalc		jsr	putsil
 		jsr	getEndAddr
 		bcs	calcExit
 ;
-; Add two to the start address since the offset is
-; relative to the address AFTER the offset.  Ie, the
-; offset from a branch at 0200 to 0202 would be 00,
-; while the offset for a branch at 0202 to 0200 is FE.
+; Add two to the end (BASE) address.  For calculations:
+;   BASE = SAL/SAH
+;   TARGET = EAL/EAH
 ;
 		clc
 		lda	SAL
 		adc	#2
 		sta	SAL
-		lda	SAH
-		adc	#0
-		sta	SAH
+		bcc	offsub
+		inc	SAH
 ;
-; Subtract the source address from the destination.
+; Subtract the BASE (start) address from the TARGET (start)
 ;
-		sec
+offsub		sec
 		lda	EAL
 		sbc	SAL
+		pha		;save for later
 		sta	SAL
 		lda	EAH
 		sbc	SAH
+		sta	SAH	;SAL/SAH contain offset
 ;
 ; High part must be either FF for negative branch or
-; 00 for a positive branch.
+; 00 for a positive branch.  Cheat a bit here by rolling
+; the MSBit into C and adding to the MSByte.  If the
+; result is zero then everything is cool.
 ;
-		cmp	#0
-		bne	calcNeg
+		pla		;restore LSB of offset
+		pha
+		asl	a	;put sign into C
+		lda	SAH
+		adc	#0
+		beq	relgood	;branch if in range
 ;
-; Positive.  The lower byte must be positive
+; Branch is out of range.
 ;
-		lda	SAL
-		bpl	calDisp	;good... display it
-;
-; Out of range
-;
-calOORange	jsr	putsil
-		db	CR,LF
-		db	"Branch out of range"
-		db	CR,LF,0
+		pla		;clean up stack
+		jsr	putsil
+		db	" - out of range",CR,LF,0
 calcExit	jmp	extKimLoop
 ;
-; Negative.  LSB must be negative too.
+; Branch is in range so dislay the value.
 ;
-calcNeg		lda	SAL
-		bpl	calOORange
-;
-; Good offset; display it
-;
-calDisp		pha
-		jsr	putsil
-		db	", offset ",0
+relgood		jsr	putsil
+		db	" Offset: ",0
 		pla
 		jsr	PRTBYT
+		jsr	CRLF
 		jmp	extKimLoop
 ;
 ; Add new commands here...
