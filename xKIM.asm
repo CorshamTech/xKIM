@@ -547,8 +547,12 @@ commandTable	db	'?'
 ; the amount of space this table consumes.
 ;
 quesDesc	db	"? ........... Show this help",0
+	if	TINY_BASIC
 bDesc		db	"B ........... Bob's Tiny BASIC",0
+	endif
+	if	SHOW_RTC
 cDesc		db	"C ........... Show clock",0
+	endif
 dDesc		db	"D ........... Disk directory",0
 eDesc		db	"E xxxx ...... Edit memory",0
 hDesc		db	"H xxxx xxxx . Hex dump memory",0
