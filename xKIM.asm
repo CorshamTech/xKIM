@@ -48,7 +48,9 @@
 ;		v1.6 - On SD error, display reason code.
 ; 09/15/2021	Bob Applegate
 ;		v1.7
-;		Added offset calculator
+;		Added offset calculator command O.
+;		Added R command in Edit mode.
+;		Removed '.' when loading from console.
 ;
 ;*****************************************************
 ; Version number
@@ -93,7 +95,7 @@ TINY_BASIC	equ	false
 ;
 SHOW_RTC	equ	true
 ;
-; ASCII
+; Non-printable ASCII constants
 ;
 NUL		equ	$00
 BS		equ	$08
@@ -190,7 +192,7 @@ OUTSP		equ	$1e9e	;print a space
 OUTCH		equ	$1ea0	;print A to TTY
 SHOW		equ	$1dac
 SHOW1		equ	$1daf
-INCPT		equ	$1f63
+INCPT		equ	$1f63	;inc POINTL/POINTH
 ;
 ;=====================================================
 ; I assume the RAM goes from 2000 to DFFF, so carve out
@@ -335,7 +337,6 @@ reentry		jmp	extKim	;extended monitor
 		jmp	DiskOpenWrite
 		jmp	DiskWrite
 ;
-;		VERIFY	BASE+$0054
 ;=====================================================
 ;=====================================================
 ; Anything past this point can be moved in future
@@ -731,7 +732,7 @@ cmdRet2		jmp	extKimLoop
 ; pattern to help detect shorted address bits.
 ; Ie: 01, 02, 04, 08, 10, 20, 40, 80, BA
 ;
-pattern		equ	CHKL	;re-use some KIM locations
+pattern		equ	CHKL		;re-use some KIM locations
 original	equ	CHKH
 ;
 ; Test patterns
@@ -778,7 +779,7 @@ memFill3	asl	a
 ; The new pattern is in A.  Now see if we've reached
 ; the end of the area to be tested.
 ;
-memFill4	pha		;save pattern
+memFill4	pha			;save pattern
 		lda	POINTL
 		cmp	EAL
 		bne	memFill5
@@ -789,7 +790,7 @@ memFill4	pha		;save pattern
 ; Not done, so move to next address and keep going.
 ;
 memFill5	jsr	INCPT
-		pla		;recover pattern
+		pla			;recover pattern
 		jmp	memTestFill
 ;
 ; Okay, memory is filled, so now go back and test it.
@@ -798,8 +799,8 @@ memFill5	jsr	INCPT
 ; point for the next pass.
 ;
 memCheck	pla
-		sta	pattern	;for next pass
-		lda	SAL	;reset pointer to start
+		sta	pattern		;for next pass
+		lda	SAL		;reset pointer to start
 		sta	POINTL
 		lda	SAH
 		sta	POINTH
@@ -823,13 +824,13 @@ memTest3	asl	a
 ;
 ; The new pattern is in A.
 ;
-memTest4	pha		;save pattern
+memTest4	pha			;save pattern
 		lda	POINTL
 		cmp	EAL
 		bne	memTest5	;not at end
 		lda	POINTH
 		cmp	EAH
-		beq	memDone	;at end of pass
+		beq	memDone		;at end of pass
 ;
 ; Not at end yet, so inc pointer and continue
 ;
@@ -879,15 +880,15 @@ cmdRet4		jmp	extKimLoop
 editMemory      jsr	space
 		jsr	getStartAddr
 		bcs	cmdRet4
-		lda	SAL	;move address into...
-		sta	POINTL	;...POINT
+		lda	SAL		;move address into...
+		sta	POINTL		;...POINT
 		lda	SAH
 		sta	POINTH
 ;
 ; Display the current location
 ;
 editMem1	jsr	CRLF
-		jsr	PRTPNT	;print address
+		jsr	PRTPNT		;print address
 		jsr	space
 		ldy	#0
 		lda	(POINTL),y	;get byte
@@ -896,7 +897,7 @@ editMem1	jsr	CRLF
 ;
 		jsr	getHex
 		bcs	editMem2	;not hex
-		ldy	#0
+editMem7	ldy	#0
 		sta	(POINTL),y	;save new value
 ;
 ; Bump POINT to next location
@@ -904,22 +905,60 @@ editMem1	jsr	CRLF
 editMem3	jsr	INCPT
 		jmp	editMem1
 ;
-; Not hex, so see if another command
+; Not hex, so see if another command.  Valid commands are:
 ;
-editMem2	cmp	#CR
+;    CR = advance to next memory location
+;    BS = move to previous location
+;    R  = compute relative offset
+;
+editMem2	cmp	#'R'		;compute relative branch
+		beq	editMem4
+		cmp	#CR
 		beq	editMem3	;move to next
 		cmp	#BS
-		bne     cmdRet3		;else exit
+		bne     cmdRet4		;else exit
 ;
 ; Move back one location
 ;
-		sec
 		lda	POINTL
-		sbc	#1
-		sta	POINTL
-		bcs	editMem1
+		bne	editMem8
 		dec	POINTH
+editMem8	dec	POINTL
 		jmp	editMem1
+;
+; They want to calculate a relative offset
+;
+editMem4	jsr	putsil
+		db	"elative offset to: ",0
+		jsr	getEndAddr
+		bcs	editMem1	;bad input
+;
+; Need to load POINTL/POINTH into SAL/SAH and then
+; decrement by one.
+;
+		lda	POINTH
+		sta	SAH
+		lda	POINTL
+		sta	SAL
+		bne	editMem5
+		dec	SAH
+editMem5	dec	SAL
+;
+		jsr	ComputeOffset
+		bcc	editMem6	;value good
+		jsr	putsil
+		db	" - out of range",0
+		jmp	editMem1
+;
+; Relative offset is in A.
+;
+editMem6	pha
+		jsr	space
+		pla
+		pha
+		jsr	PRTBYT		;print it
+		pla
+		jmp	editMem7	;store it
 ;
 ;=====================================================
 ; This handles the Load hex command.
@@ -971,27 +1010,27 @@ loadStart	jsr	redirectedGetch	;get start of line
 		beq	loadStart
 		cmp	#LF
 		beq	loadStart
-		cmp	#':'	;what we expect
+		cmp	#':'		;what we expect
 		bne	loadAbortB
 ;
 ; Get the header of the record
 ;
 		lda	#0
-		sta	CHKL	;initialize checksum
+		sta	CHKL		;initialize checksum
 ;
-		jsr	getHex	;get byte count
+		jsr	getHex		;get byte count
 		bcs	loadAbortC
 		sta	byteCount	;save byte count
 		jsr	updateCrc
-		jsr	getHex	;get the MSB of offset
+		jsr	getHex		;get the MSB of offset
 		bcs	loadAbortD
 		sta	POINTH
 		jsr	updateCrc
-		jsr	getHex	;get LSB of offset
+		jsr	getHex		;get LSB of offset
 		bcs	loadAbortE
 		sta	POINTL
 		jsr	updateCrc
-		jsr	getHex	;get the record type
+		jsr	getHex		;get the record type
 		bcs	loadAbortF
 		jsr	updateCrc
 ;
@@ -1052,7 +1091,7 @@ loadAbortH	lda	#'H'
 ;
 ; EOF is easy
 ;
-loadEof		jsr	getHex	;get checksum
+loadEof		jsr	getHex		;get checksum
 		jsr	setInputConsole	;reset input vector
 		jsr	putsil
 		db	CR,LF
@@ -1075,7 +1114,7 @@ lExit1		jmp	extKimLoop
 ; big file if the console speed is slow.
 ;
 loadDataRec	ldx	byteCount	;byte count
-		ldy	#0	;offset
+		ldy	#0		;offset
 loadData1	stx	byteCount
 		sty	saveY
 		jsr	getHex
@@ -1093,14 +1132,22 @@ loadData1	stx	byteCount
 ; just add the checksum into what we've been calculating
 ; and if the result is zero then the record is good.
 ;
-		jsr	getHex	;get checksum
+		jsr	getHex		;get checksum
 		clc
 		adc	CHKL
 		bne	loadAbortH	;non-zero is error
 ;
+; If loading from an SD file then print a dot at the
+; end of each record.  Doing this for serial input is
+; very bad because the terminal program is sending the
+; next character while this is sending the dot.  Ie,
+; data is lost.
+;
+		lda	filename
+		beq	lrecdone	;jump if not file
 		lda	#'.'	;sanity indicator when
 		jsr	OUTCH	;...loading from file
-		jmp	loadStart
+lrecdone	jmp	loadStart
 ;
 ;=====================================================
 ; Handles the command to save a region of memory as a
@@ -1384,55 +1431,22 @@ offCalc		jsr	putsil
 		db	0
 		jsr	getEndAddr
 		bcs	calcExit
-;
-; Add two to the end (BASE) address.  For calculations:
-;   BASE = SAL/SAH
-;   TARGET = EAL/EAH
-;
-		clc
-		lda	SAL
-		adc	#2
-		sta	SAL
-		bcc	offsub
-		inc	SAH
-;
-; Subtract the BASE (start) address from the TARGET (start)
-;
-offsub		sec
-		lda	EAL
-		sbc	SAL
-		pha		;save for later
-		sta	SAL
-		lda	EAH
-		sbc	SAH
-		sta	SAH	;SAL/SAH contain offset
-;
-; High part must be either FF for negative branch or
-; 00 for a positive branch.  Cheat a bit here by rolling
-; the MSBit into C and adding to the MSByte.  If the
-; result is zero then everything is cool.
-;
-		pla		;restore LSB of offset
-		pha
-		asl	a	;put sign into C
-		lda	SAH
-		adc	#0
-		beq	relgood	;branch if in range
+		jsr	ComputeOffset	;does the work
+		bcc	relgood		;if good offset
 ;
 ; Branch is out of range.
 ;
-		pla		;clean up stack
 		jsr	putsil
 		db	" - out of range",CR,LF,0
 calcExit	jmp	extKimLoop
 ;
 ; Branch is in range so dislay the value.
 ;
-relgood		jsr	putsil
+relgood		pha			;save offset
+		jsr	putsil
 		db	" Offset: ",0
 		pla
 		jsr	PRTBYT
-		jsr	CRLF
 		jmp	extKimLoop
 ;
 ; Add new commands here...
@@ -1563,7 +1577,6 @@ getHex		jsr	getNibble
 		asl	a
 		asl	a
 		asl	a
-		and	#$f0
 		sta	saveA
 		jsr	getNibble
 		bcs	getNibBad
@@ -1631,8 +1644,60 @@ getAddrRange    jsr	space
 		rts
 ;
 ;=====================================================
+; This computes the relative offset between the
+; address in SAL/SAH (address of branch instruction)
+; and EAL/EAH (address to jump to).  If a valid range,
+; returns C clear and the offset in A.  If the branch
+; is out of range, C is set and A undefined.  Modifies
+; A, SAL and SAH.
+;
+ComputeOffset
+;
+; Add two to the end (BASE) address.  For calculations:
+;   BASE = SAL/SAH
+;   TARGET = EAL/EAH
+;
+		clc
+		lda	SAL
+		adc	#2
+		sta	SAL
+		bcc	coffsub
+		inc	SAH
+;
+; Subtract the BASE (end) address from the TARGET (start)
+;
+coffsub		sec
+		lda	EAL
+		sbc	SAL
+		pha		;save for later
+		sta	SAL
+		lda	EAH
+		sbc	SAH
+		sta	SAH	;SAL/SAH contain offset
+;
+; High part must be either FF for negative branch or
+; 00 for a positive branch.  Cheat a bit here by rolling
+; the MSBit into C and adding to the MSByte.  If the
+; result is zero then everything is cool.
+;
+		pla		;restore LSB of offset
+		pha
+		asl	a	;put sign into C
+		lda	SAH
+		adc	#0
+		beq	cogood	;branch if in range
+;
+		pla		;clean up stack
+		sec		;error
+		rts
+;
+cogood		pla		;get back offset
+		clc
+		rts
+;
+;=====================================================
 ; Get a disk filename.  The KIM's behavior of echoing
-; even key prevents this from being too fancy, but it's
+; every key prevents this from being too fancy, but it's
 ; good enough.
 ;
 getFileName	ldx	#0
@@ -1760,6 +1825,20 @@ hexta1		adc	#'0'	;then fall into...
 redirectedOutch	jmp	(outputVector)
 ;
 ;=====================================================
+; This flushes any data remaining in the disk buffer
+; and then closes the file.
+;
+CloseOutFile	lda	diskBufOffset
+		beq	closeonly
+		ldx	#buffer>>8
+		ldy	#buffer&$ff
+		jsr	DiskWrite
+;
+closeonly	jsr	DiskClose
+;
+; Fall through...
+;
+;=====================================================
 ; Set up the output vector to point to the normal
 ; console output subroutine.
 ;
@@ -1808,18 +1887,7 @@ pNFB		sta	buffer,x
 		inx
 		stx	diskBufOffset
 		rts
-;
-;=====================================================
-; This flushes any data remaining in the disk buffer
-; and then closes the file.
-;
-CloseOutFile	lda	diskBufOffset
-		beq	closeonly
-		ldx	#buffer>>8
-		ldy	#buffer&$ff
-		jsr	DiskWrite
-;
-closeonly	jmp	DiskClose
+
 ;
 		include	"pario.asm"
 		include	"parproto.inc"
@@ -1895,9 +1963,9 @@ clockread	stx	saveX
 		jmp	extKim	;return to monitor
 ;
 ;========================================================
-; Given a binary value in A, display it as two digits.
-; The input can't be greater than 99.  Always print
-; a leader zero if less than 10.
+; Given a binary value in A, display it as two decimal
+; digits.  The input can't be greater than 99.  Always
+; print a leading zero if less than 10.
 ;
 outdec		ldy	#0	;counts 10s
 out1		cmp	#10
