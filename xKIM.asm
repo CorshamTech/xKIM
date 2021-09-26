@@ -51,12 +51,17 @@
 ;		Added offset calculator command O.
 ;		Added R command in Edit mode.
 ;		Removed '.' when loading from console.
+; 09/20/2021	Bob Applegate
+;		v1.8
+;		Made a lot of the command handlers
+;		into subroutines and added vectors so
+;		external programs can call them.
 ;
 ;*****************************************************
 ; Version number
 ;
 VERSION		equ	1
-REVISION	equ	7
+REVISION	equ	8
 ;
 ; Useful constants
 ;
@@ -311,12 +316,10 @@ reentry		jmp	extKim	;extended monitor
 		jmp	getStartAddr
 		jmp	getEndAddr
 		jmp	getAddrRange
-; future use
-		VERIFY	BASE+$0021
-		jmp	dummyRet
-		jmp	dummyRet
-		jmp	dummyRet
-		jmp	dummyRet
+		jmp	doHexDump	;perform a hex dump
+		jmp	doEdit		;edit memory
+		jmp	loadHexConsole	;load hex file via console
+		jmp	loadHexFile	;load hex file from SD
 		jmp	dummyRet
 		jmp	dummyRet
 ;
@@ -635,11 +638,17 @@ NDYdone		jmp	extKimLoop
 hexDump		jsr	getAddrRange
 		bcs	NDYdone
 		jsr	CRLF
+		jsr	doHexDump	;subroutine does it
+cmdRet2		jmp	extKimLoop
+;
+;=====================================================
+; This subroutine does a hex dump from the address in
+; SAL/H to EAL/H.
 ;
 ; Move start address to POINT but rounded down to the
 ; 16 byte boundary.
 ;
-		lda	SAH
+doHexDump	lda	SAH
 		sta	POINTH
 		lda	SAL
 		and	#$f0	;force to 16 byte
@@ -721,8 +730,7 @@ hexlntst	dex
 hexdone		jsr	CRLF
 		pla
 		pla
-;
-cmdRet2		jmp	extKimLoop
+		rts
 ;
 ;=====================================================
 ; This does a memory test of a region of memory.  One
@@ -744,8 +752,9 @@ original	equ	CHKH
 PATTERN_0	equ	$01
 PATTERN_9	equ	$ba
 ;
+cmdRet5		jmp	extKimLoop
 memTest		jsr	getAddrRange	;get range
-		bcs	cmdRet2		;branch if abort
+		bcs	cmdRet5		;branch if abort
 ;
 		jsr	putsil
 		db	CR,LF
@@ -856,10 +865,7 @@ memFail		pha		;save pattern for error report
 		jsr	putsil
 		db	CR,LF
 		db	"Failure at address ",0
-		lda	POINTH
-		jsr	PRTBYT
-		lda	POINTL
-		jsr	PRTBYT
+		jsr	PRTPNT
 		jsr	putsil
 		db	".  Expected ",0
 		pla
@@ -888,15 +894,22 @@ editMemory      jsr	space
 		sta	POINTL		;...POINT
 		lda	SAH
 		sta	POINTH
+		jsr	CRLF
+		jsr	doEdit
+		jmp	extKimLoop
+;
+;=====================================================
+; This subroutine edits memory.  On entry, POINT has
+; the first address to edit.  Upon exit, POINT will
+; have been updated to next address to edit.
 ;
 ; Display the current location
 ;
-editMem1	jsr	CRLF
-		jsr	PRTPNT		;print address
+doEdit		jsr	PRTPNT		;print address
 		jsr	space
 		ldy	#0
 		lda	(POINTL),y	;get byte
-		jsr	PRTBYT	;print it
+		jsr	PRTBYT		;print it
 		jsr	space
 ;
 		jsr	getHex
@@ -906,8 +919,9 @@ editMem7	ldy	#0
 ;
 ; Bump POINT to next location
 ;
-editMem3	jsr	INCPT
-		jmp	editMem1
+editMem3	jsr	CRLF
+		jsr	INCPT
+		jmp	doEdit
 ;
 ; Not hex, so see if another command.  Valid commands are:
 ;
@@ -920,7 +934,7 @@ editMem2	cmp	#'R'		;compute relative branch
 		cmp	#CR
 		beq	editMem3	;move to next
 		cmp	#BS
-		bne     cmdRet4		;else exit
+		bne     editexit		;else exit
 ;
 ; Move back one location
 ;
@@ -928,14 +942,16 @@ editMem2	cmp	#'R'		;compute relative branch
 		bne	editMem8
 		dec	POINTH
 editMem8	dec	POINTL
-		jmp	editMem1
+		jmp	doEdit
+;
+editexit	rts
 ;
 ; They want to calculate a relative offset
 ;
 editMem4	jsr	putsil
 		db	"elative offset to: ",0
 		jsr	getEndAddr
-		bcs	editMem1	;bad input
+		bcs	doEdit		;bad input
 ;
 ; Need to load POINTL/POINTH into SAL/SAH and then
 ; decrement by one.
@@ -952,7 +968,7 @@ editMem5	dec	SAL
 		bcc	editMem6	;value good
 		jsr	putsil
 		db	" - out of range",0
-		jmp	editMem1
+		jmp	doEdit
 ;
 ; Relative offset is in A.
 ;
@@ -967,23 +983,42 @@ editMem6	pha
 ;=====================================================
 ; This handles the Load hex command.
 ;
-loadHex		lda	#$ff
-		sta	AutoRun+1
-;
-		jsr	putsil
+loadHex		jsr	putsil
 		db	CR,LF
 		db	"Enter filename, or Enter to "
 		db	"load from console: ",0
 ;
 		jsr	getFileName	;get filename
 		lda	filename	;null?
-		beq	loadHexConsole	;load from console
+		bne	loaddiskfile
+		jsr	loadHexConsole	;load from console
+		jmp	loadCheckAuto	;check auto-run
 ;
 ; Open the file
 ;
-;		jsr	xParInit
-		ldy	#filename&$ff
+loaddiskfile	ldy	#filename&$ff
 		ldx	#filename/256
+		lda	#$ff
+		sta	ID		;print dots
+		jsr	loadHexFile
+;
+; If the auto-run vector is no longer $ffff, then jump
+; to whatever it points to.
+;
+loadCheckAuto	lda	AutoRun+1
+		cmp	#$ff		;unchanged?
+		beq	lExit11
+		jmp	(AutoRun)	;execute!
+lExit11		jmp	extKimLoop
+;
+;=====================================================
+; This subroutine loads a hex file from the SD.  On
+; entry the pointer to the filename is in X (MSB) and
+; Y (LSB).
+;
+loadHexFile	lda	#$ff
+		sta	AutoRun+1
+		sta	ID		;we want dots
 		jsr	DiskOpenRead
 		bcc	loadHexOk	;opened ok
 ;
@@ -991,14 +1026,20 @@ openfail	jsr	putsil
 		db	CR,LF
 		db	"Failed to open file"
 		db	CR,LF,0
-cmdRet3		jmp	extKimLoop
+		rts
 ;
 loadHexOk	jsr	setInputFile	;redirect input
 		jmp	loadStart
 ;
-; They are loading from the console
+;=====================================================
+; This subroutine is called to load a hex file from
+; the console.
 ;
-loadHexConsole	jsr	putsil
+loadHexConsole	lda	#$ff
+		sta	AutoRun+1
+		lda	#0
+		sta	ID		;don't print dots
+		jsr	putsil
 		db	CR,LF
 		db	"Waiting for file, or ESC to"
 		db	" exit..."
@@ -1064,7 +1105,7 @@ loadAbort       pha			;save reason
 		jsr	OUTCH		;...display reason
 		jsr	CRLF
 loadExit	jsr	setInputConsole
-		jmp	extKimLoop
+		rts
 ;
 ; Various error reason codes.  This was meant to be
 ; very temporary as I worked out the real problem, but
@@ -1101,16 +1142,7 @@ loadEof		jsr	getHex		;get checksum
 		db	CR,LF
 		db	"Success!"
 		db	CR,LF,0
-;
-; If the auto-run vector is no longer $ffff, then jump
-; to whatever it points to.
-;
-		lda	AutoRun+1
-		cmp	#$ff		;unchanged?
-		beq	lExit1
-		jmp	(AutoRun)	;execute!
-;
-lExit1		jmp	extKimLoop
+		rts
 ;
 ; Data records have more work.  After processing the
 ; line, print a dot to indicate progress.  This should
@@ -1147,11 +1179,12 @@ loadData1	stx	byteCount
 ; next character while this is sending the dot.  Ie,
 ; data is lost.
 ;
-		lda	filename
+		lda	ID
 		beq	lrecdone	;jump if not file
-		lda	#'.'	;sanity indicator when
-		jsr	OUTCH	;...loading from file
+		lda	#'.'		;sanity indicator when
+		jsr	OUTCH		;...loading from file
 lrecdone	jmp	loadStart
+lExit1		jmp	extKimLoop
 ;
 ;=====================================================
 ; Handles the command to save a region of memory as a
