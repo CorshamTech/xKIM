@@ -56,17 +56,20 @@
 ;		Made a lot of the command handlers
 ;		into subroutines and added vectors so
 ;		external programs can call them.
+;		Fixed bugs in Edit mode.
 ;
 ;*****************************************************
-; Version number
-;
-VERSION		equ	1
-REVISION	equ	8
 ;
 ; Useful constants
 ;
 false		equ	0
 true		equ	~false
+;
+; Version number
+;
+VERSION		equ	1
+REVISION	equ	8
+BETA		equ	true
 ;
 ; Options.  If RAM_BASED is set then the code is put
 ; into RAM, else it's in ROM.  Very handy for testing
@@ -320,7 +323,7 @@ reentry		jmp	extKim	;extended monitor
 		jmp	doEdit		;edit memory
 		jmp	loadHexConsole	;load hex file via console
 		jmp	loadHexFile	;load hex file from SD
-		jmp	dummyRet
+		jmp	doSDDiskDir	;do a disk directory
 		jmp	dummyRet
 ;
 ; SD card functions
@@ -414,6 +417,9 @@ coldStart	lda	#COLD_FLAG_1	;indicate we've done cold
 		db	CR,LF,CR,LF
 		db	"Extended KIM Monitor v"
 		db	VERSION+'0','.',REVISION+'0',' '
+	if	BETA
+		db	"BETA "
+	endif
 		db	"by Corsham Technologies, LLC"
 		db	CR,LF
 		db	"www.corshamtech.com"
@@ -942,6 +948,7 @@ editMem2	cmp	#'R'		;compute relative branch
 		bne	editMem8
 		dec	POINTH
 editMem8	dec	POINTL
+		jsr	CRLF
 		jmp	doEdit
 ;
 editexit	rts
@@ -1388,7 +1395,7 @@ pingDisk
 		jsr	putsil
 		db	"success!"
 		db	CR,LF,0
-doDiskDirEnd    jmp	extKimLoop
+		jmp	extKimLoop
 ;
 ;=====================================================
 ; Do a disk directory of the SD card.
@@ -1396,7 +1403,15 @@ doDiskDirEnd    jmp	extKimLoop
 doDiskDir	jsr	putsil
 		db	"isk Directory..."
 		db	CR,LF,0
-;		jsr	xParInit
+		jsr	doSDDiskDir
+		jmp	extKimLoop
+doDiskDirEnd	rts
+;
+;=====================================================
+; Subroutine to do a disk directory.  Prints filenames
+; to the console.
+;
+doSDDiskDir	jsr	xParInit
 		jsr	DiskDir
 ;
 ; Get/Display each entry
@@ -1924,7 +1939,6 @@ pNFB		sta	buffer,x
 		inx
 		stx	diskBufOffset
 		rts
-
 ;
 		include	"pario.asm"
 		include	"parproto.inc"

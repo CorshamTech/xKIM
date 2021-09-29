@@ -1,6 +1,6 @@
 ;=====================================================
 ; This file contains vectors for Corsham Technologies'
-; xKIM monitor.  Last update 09/20/2021 for v1.8.
+; xKIM monitor.  Last update 09/26/2021 for v1.8.
 ;
 ; www.corshamtech.com
 ;
@@ -29,7 +29,7 @@ xkHexDump	ds	3	;perform a hex dump
 xkMemEdit	ds	3	;edit memory
 loadHexConsole	ds	3	;load hex via console
 loadHexFile	ds	3	;load hex from SD
-xKIM_res_5	ds	3
+doDiskDir	ds	3	;do directory of SD card
 xKIM_res_6	ds	3
 ;
 ; SD card functions
