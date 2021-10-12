@@ -69,7 +69,7 @@ true		equ	~false
 ;
 VERSION		equ	1
 REVISION	equ	8
-BETA		equ	true
+BETA_VER	equ	2
 ;
 ; Options.  If RAM_BASED is set then the code is put
 ; into RAM, else it's in ROM.  Very handy for testing
@@ -324,7 +324,7 @@ reentry		jmp	extKim	;extended monitor
 		jmp	loadHexConsole	;load hex file via console
 		jmp	loadHexFile	;load hex file from SD
 		jmp	doSDDiskDir	;do a disk directory
-		jmp	dummyRet
+		jmp	ComputeOffset	;compute relative offset
 ;
 ; SD card functions
 ;
@@ -342,6 +342,10 @@ reentry		jmp	extKim	;extended monitor
 		jmp	DiskClose
 		jmp	DiskOpenWrite
 		jmp	DiskWrite
+;
+; Even more vectors as I ran out of the reserve area!
+;
+
 ;
 ;=====================================================
 ;=====================================================
@@ -417,8 +421,10 @@ coldStart	lda	#COLD_FLAG_1	;indicate we've done cold
 		db	CR,LF,CR,LF
 		db	"Extended KIM Monitor v"
 		db	VERSION+'0','.',REVISION+'0',' '
-	if	BETA
+	if	BETA_VER
 		db	"BETA "
+		db	BETA_VER+'0'
+		db	' '
 	endif
 		db	"by Corsham Technologies, LLC"
 		db	CR,LF

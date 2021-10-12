@@ -30,7 +30,7 @@ xkMemEdit	ds	3	;edit memory
 loadHexConsole	ds	3	;load hex via console
 loadHexFile	ds	3	;load hex from SD
 doDiskDir	ds	3	;do directory of SD card
-xKIM_res_6	ds	3
+calcOffset	ds	3	;compute branch offset
 ;
 ; SD card functions
 ;
