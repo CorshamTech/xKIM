@@ -68,4 +68,4 @@ zCode		jsr	putsil	;call display function
 		db	"A Zoo is a place with "
 		db	"lots of animals."
 		db	CR,LF,0
-		jmp	extKim	;return to Extended KIM
+		jmp	extKIM	;return to Extended KIM

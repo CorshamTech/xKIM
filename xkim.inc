@@ -1,24 +1,31 @@
 ;=====================================================
 ; This file contains vectors for Corsham Technologies'
-; xKIM monitor.  Last update 09/26/2021 for v1.8.
+; xKIM monitor.  Last update 12/12/2021 for v1.8.
+;
+; Note that some subroutine names have changed
+; slightly to fix duplicate names in the KIM monitor.
+;
+; See the xKIM User Manual for documentation on the
+; data in this file.
 ;
 ; www.corshamtech.com
+; https://github.com/CorshamTech/xKIM
 ;
 xKIM_BASE	equ	$e000
 		bss
-origBss		equ	*	;sAVE BSS!!!
+origBss		equ	*	;SAVE BSS!!!
 		org	xKIM_BASE
 ;
 ; Main functions
 ;
-extKim		ds	3	;extended monitor
+extKIM		ds	3	;extended monitor
 xkOUTCH		ds	3	;output A to console
 xkGETCH		ds	3	;get a key and echo
 xkGETCHne	ds	3	;no echo - KIM can't do it
 xKIM_res_0	ds	3	;future - console stat
 putsil		ds	3	;print string after JSR
 getHex		ds	3	;get hex value in A
-PRTBYT		ds	3	;print A as hex
+xkPRTBYT	ds	3	;print A as hex
 getStartAddr	ds	3
 getEndAddr	ds	3
 getAddrRange	ds	3
@@ -54,6 +61,9 @@ AutoRun		ds	2
 ColdFlag	ds	2
 ExtensionAddr	ds	2
 HighestAddress	ds	2
+;
+; New vectors will go here.
+;
 ;
 ; Now restore BSS!
 ;
