@@ -69,7 +69,7 @@ true		equ	~false
 ;
 VERSION		equ	1
 REVISION	equ	8
-BETA_VER	equ	2
+BETA_VER	equ	0
 ;
 ; Options.  If RAM_BASED is set then the code is put
 ; into RAM, else it's in ROM.  Very handy for testing
